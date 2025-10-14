@@ -1,0 +1,246 @@
+---
+alwaysApply: true
+description: Monorepo 和包管理最佳实践
+---
+
+# Monorepo 和包管理指南
+
+Dub 使用 Turborepo 管理 monorepo，本规则定义了包管理和依赖关系的最佳实践。
+
+## Monorepo 结构
+
+### 工作区配置
+项目使用 [pnpm-workspace.yaml](mdc:pnpm-workspace.yaml) 定义工作区：
+```yaml
+packages:
+  - "apps/*"
+  - "packages/*"
+```
+
+### Turborepo 配置
+[turbo.json](mdc:turbo.json) 定义了构建管道和缓存策略：
+- **build**: 依赖其他包的构建输出
+- **dev**: 开发模式，不缓存，持续运行
+- **test**: 依赖构建完成后运行
+
+## 包依赖管理
+
+### 内部包引用
+```json
+// package.json 中引用内部包
+{
+  "dependencies": {
+    "@dub/ui": "workspace:*",
+    "@dub/utils": "workspace:*",
+    "@dub/prisma": "workspace:*"
+  }
+}
+```
+
+### 包版本策略
+- **内部包**: 使用 `workspace:*` 引用
+- **外部包**: 锁定具体版本，避免版本冲突
+- **共享依赖**: 在根 package.json 中管理
+
+## 核心包说明
+
+### @dub/ui
+共享 UI 组件库，位于 [packages/ui/](mdc:packages/ui/)
+```typescript
+// 从 @dub/ui 导入组件
+import { Button, Modal, Avatar } from "@dub/ui";
+import { cn } from "@dub/ui/cn"; // 工具函数
+```
+
+**使用原则**:
+- 只包含通用、可复用的组件
+- 不依赖业务逻辑
+- 提供完整的 TypeScript 类型定义
+
+### @dub/utils
+通用工具函数库，位于 [packages/utils/](mdc:packages/utils/)
+```typescript
+// 常用工具函数
+import { cn, formatDate, slugify } from "@dub/utils";
+import { fetcher } from "@dub/utils/fetcher";
+```
+
+**使用原则**:
+- 纯函数，无副作用
+- 完整的单元测试覆盖
+- 清晰的 JSDoc 文档
+
+### @dub/prisma
+数据库 schema 和客户端，位于 [packages/prisma/](mdc:packages/prisma/)
+```typescript
+// 导入 Prisma 客户端和类型
+import { prisma } from "@dub/prisma";
+import type { User, Link, Project } from "@dub/prisma/client";
+```
+
+**使用原则**:
+- 所有数据库操作都通过此包
+- Schema 文件按功能模块拆分
+- 提供类型安全的数据库客户端
+
+### @dub/email
+邮件模板和发送逻辑，位于 [packages/email/](mdc:packages/email/)
+```typescript
+// 发送邮件
+import { sendEmail } from "@dub/email";
+import { WelcomeEmail } from "@dub/email/templates";
+```
+
+### @dub/tailwind-config
+共享 Tailwind CSS 配置，位于 [packages/tailwind-config/](mdc:packages/tailwind-config/)
+```typescript
+// 在应用中使用共享配置
+import sharedConfig from "@dub/tailwind-config/tailwind.config";
+```
+
+## 开发工作流
+
+### 本地开发
+```bash
+# 安装所有依赖
+pnpm install
+
+# 启动开发服务器（所有应用）
+pnpm dev
+
+# 只启动 web 应用
+pnpm --filter web dev
+
+# 构建所有包
+pnpm build
+
+# 只构建共享包
+pnpm build:packages
+```
+
+### 包管理命令
+```bash
+# 为特定包添加依赖
+pnpm --filter @dub/ui add react-icons
+
+# 为所有包添加开发依赖
+pnpm add -D typescript --workspace-root
+
+# 运行特定包的脚本
+pnpm --filter @dub/ui build
+```
+
+### 依赖更新
+```bash
+# 检查过时的依赖
+pnpm outdated
+
+# 更新所有依赖到最新版本
+pnpm update
+
+# 更新特定依赖
+pnpm update react react-dom
+```
+
+## 包开发最佳实践
+
+### 新包创建
+1. 在 `packages/` 目录下创建新文件夹
+2. 初始化 `package.json`：
+```json
+{
+  "name": "@dub/new-package",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch"
+  }
+}
+```
+
+3. 配置构建工具 (`tsup.config.ts`)
+4. 添加 TypeScript 配置
+5. 在需要的地方添加依赖引用
+
+### 包导出策略
+```typescript
+// packages/utils/src/index.ts
+export { cn } from "./cn";
+export { formatDate } from "./format-date";
+export { slugify } from "./slugify";
+
+// 避免导出所有内容
+export * from "./internal"; // ❌ 不推荐
+```
+
+### 类型定义
+```typescript
+// 为包提供完整的类型定义
+export interface PackageConfig {
+  apiKey: string;
+  baseUrl?: string;
+}
+
+export declare function initializePackage(config: PackageConfig): void;
+```
+
+## 构建和发布
+
+### 构建配置
+每个包都应该有自己的构建配置：
+```typescript
+// tsup.config.ts
+import { defineConfig } from "tsup";
+
+export default defineConfig({
+  entry: ["src/index.ts"],
+  format: ["cjs", "esm"],
+  dts: true,
+  splitting: false,
+  sourcemap: true,
+  clean: true,
+});
+```
+
+### 发布流程
+```bash
+# 构建包
+pnpm build --filter @dub/package-name
+
+# 发布到 npm
+cd packages/package-name
+npm publish
+```
+
+## 依赖管理原则
+
+### 版本控制
+- **主要依赖**: 在根 package.json 中统一管理版本
+- **特定依赖**: 只在需要的包中添加
+- **开发依赖**: 优先在根级别添加
+
+### 依赖分类
+```json
+{
+  "dependencies": {
+    // 运行时必需的依赖
+    "react": "^18.0.0"
+  },
+  "devDependencies": {
+    // 开发和构建时需要的依赖
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    // 由使用方提供的依赖
+    "react": ">=18.0.0"
+  }
+}
+```
+
+### 避免重复依赖
+- 使用 `pnpm ls` 检查依赖树
+- 在根 package.json 中使用 `resolutions` 解决版本冲突
+- 定期清理未使用的依赖

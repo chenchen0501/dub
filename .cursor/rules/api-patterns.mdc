@@ -1,0 +1,433 @@
+---
+globs: "app/api/**/*.ts,lib/api/**/*.ts,lib/swr/**/*.ts"
+description: API 路由和数据获取模式指南
+---
+
+# API 路由和数据获取模式
+
+本规则定义了 Dub 项目中 API 路由设计和数据获取的最佳实践。
+
+## API 路由结构
+
+### Next.js App Router API
+API 路由位于 [apps/web/app/api/](mdc:apps/web/app/api/) 目录：
+
+```
+api/
+├── auth/           # 认证相关 API
+├── links/          # 链接管理
+├── analytics/      # 分析数据
+├── partners/       # 合作伙伴
+├── customers/      # 客户管理
+├── webhooks/       # Webhook 处理
+└── workspaces/     # 工作区管理
+```
+
+### 路由文件命名
+```typescript
+// app/api/links/route.ts - 处理 /api/links
+export async function GET() { ... }
+export async function POST() { ... }
+
+// app/api/links/[linkId]/route.ts - 处理 /api/links/:linkId
+export async function GET(request: Request, { params }: { params: { linkId: string } }) { ... }
+
+// app/api/links/[linkId]/analytics/route.ts - 嵌套路由
+```
+
+## API 路由实现模式
+
+### 标准路由结构
+```typescript
+// app/api/example/route.ts
+import { NextRequest } from "next/server";
+import { getSession } from "@/lib/auth";
+import { prisma } from "@dub/prisma";
+import { z } from "zod";
+
+// 1. 请求 Schema 定义
+const createExampleSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+});
+
+// 2. GET 处理函数
+export async function GET(request: NextRequest) {
+  try {
+    // 认证检查
+    const session = await getSession();
+    if (!session?.user) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    // 查询参数解析
+    const { searchParams } = new URL(request.url);
+    const page = parseInt(searchParams.get("page") || "1");
+    const limit = parseInt(searchParams.get("limit") || "10");
+
+    // 数据库查询
+    const examples = await prisma.example.findMany({
+      where: { userId: session.user.id },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+
+    return Response.json(examples);
+  } catch (error) {
+    console.error("GET /api/example error:", error);
+    return new Response("Internal Server Error", { status: 500 });
+  }
+}
+
+// 3. POST 处理函数
+export async function POST(request: NextRequest) {
+  try {
+    const session = await getSession();
+    if (!session?.user) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    // 请求体验证
+    const body = await request.json();
+    const result = createExampleSchema.safeParse(body);
+    
+    if (!result.success) {
+      return Response.json(
+        { error: "Invalid request data", details: result.error.issues },
+        { status: 400 }
+      );
+    }
+
+    // 业务逻辑处理
+    const example = await prisma.example.create({
+      data: {
+        ...result.data,
+        userId: session.user.id,
+      },
+    });
+
+    return Response.json(example, { status: 201 });
+  } catch (error) {
+    console.error("POST /api/example error:", error);
+    return new Response("Internal Server Error", { status: 500 });
+  }
+}
+```
+
+### 动态路由参数
+```typescript
+// app/api/links/[linkId]/route.ts
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { linkId: string } }
+) {
+  const { linkId } = params;
+  
+  // 参数验证
+  if (!linkId || typeof linkId !== "string") {
+    return new Response("Invalid link ID", { status: 400 });
+  }
+
+  // 查询逻辑
+  const link = await prisma.link.findUnique({
+    where: { id: linkId },
+  });
+
+  if (!link) {
+    return new Response("Link not found", { status: 404 });
+  }
+
+  return Response.json(link);
+}
+```
+
+## 数据获取模式
+
+### SWR Hooks
+数据获取 hooks 位于 [apps/web/lib/swr/](mdc:apps/web/lib/swr/) 目录：
+
+```typescript
+// lib/swr/use-links.ts
+import useSWR from "swr";
+import { fetcher } from "@dub/utils";
+import type { LinkProps } from "@/lib/types";
+
+interface UseLinksParams {
+  workspaceId?: string;
+  page?: number;
+  limit?: number;
+}
+
+export function useLinks({ workspaceId, page = 1, limit = 10 }: UseLinksParams = {}) {
+  const { data, error, mutate } = useSWR<LinkProps[]>(
+    workspaceId ? `/api/links?workspaceId=${workspaceId}&page=${page}&limit=${limit}` : null,
+    fetcher,
+    {
+      revalidateOnFocus: false,
+      dedupingInterval: 60000, // 1 minute
+    }
+  );
+
+  return {
+    links: data,
+    loading: !error && !data,
+    error,
+    mutate,
+  };
+}
+```
+
+### API 客户端函数
+客户端 API 函数位于 [apps/web/lib/api/](mdc:apps/web/lib/api/) 目录：
+
+```typescript
+// lib/api/links.ts
+import { fetcher } from "@dub/utils";
+import type { LinkProps, NewLinkProps } from "@/lib/types";
+
+export const linksApi = {
+  // 获取链接列表
+  getLinks: async (params: {
+    workspaceId: string;
+    page?: number;
+    limit?: number;
+  }): Promise<LinkProps[]> => {
+    const searchParams = new URLSearchParams({
+      workspaceId: params.workspaceId,
+      page: String(params.page || 1),
+      limit: String(params.limit || 10),
+    });
+    
+    return fetcher(`/api/links?${searchParams}`);
+  },
+
+  // 创建链接
+  createLink: async (data: NewLinkProps): Promise<LinkProps> => {
+    return fetcher("/api/links", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+  },
+
+  // 更新链接
+  updateLink: async (linkId: string, data: Partial<LinkProps>): Promise<LinkProps> => {
+    return fetcher(`/api/links/${linkId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+  },
+
+  // 删除链接
+  deleteLink: async (linkId: string): Promise<void> => {
+    return fetcher(`/api/links/${linkId}`, {
+      method: "DELETE",
+    });
+  },
+};
+```
+
+## 认证和授权
+
+### 会话检查
+```typescript
+// 在 API 路由中检查认证
+import { getSession } from "@/lib/auth";
+
+export async function GET(request: NextRequest) {
+  const session = await getSession();
+  
+  if (!session?.user) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
+  // 继续处理已认证的请求
+}
+```
+
+### 权限检查
+```typescript
+// 检查工作区权限
+import { getWorkspaceViaEdge } from "@/lib/planetscale";
+
+export async function POST(request: NextRequest) {
+  const session = await getSession();
+  const { workspaceId } = await request.json();
+
+  const workspace = await getWorkspaceViaEdge(workspaceId);
+  
+  if (!workspace || workspace.users.some(u => u.userId !== session.user.id)) {
+    return new Response("Forbidden", { status: 403 });
+  }
+
+  // 继续处理
+}
+```
+
+## 错误处理
+
+### 统一错误响应
+```typescript
+// 标准错误响应格式
+function errorResponse(message: string, status: number = 400) {
+  return Response.json(
+    { error: message },
+    { status, headers: { "Content-Type": "application/json" } }
+  );
+}
+
+// 使用示例
+if (!linkId) {
+  return errorResponse("Link ID is required", 400);
+}
+```
+
+### 错误日志
+```typescript
+// 记录详细错误信息
+try {
+  // API 逻辑
+} catch (error) {
+  console.error("API Error:", {
+    endpoint: request.url,
+    method: request.method,
+    error: error.message,
+    stack: error.stack,
+    userId: session?.user?.id,
+  });
+  
+  return errorResponse("Internal Server Error", 500);
+}
+```
+
+## 数据验证
+
+### Zod Schema 验证
+```typescript
+import { z } from "zod";
+
+// 定义验证 schema
+const updateLinkSchema = z.object({
+  url: z.string().url().optional(),
+  title: z.string().min(1).optional(),
+  description: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+});
+
+// 在 API 中使用
+export async function PATCH(request: NextRequest) {
+  const body = await request.json();
+  const result = updateLinkSchema.safeParse(body);
+  
+  if (!result.success) {
+    return Response.json(
+      { 
+        error: "Validation failed", 
+        details: result.error.flatten().fieldErrors 
+      },
+      { status: 400 }
+    );
+  }
+
+  // 使用验证后的数据
+  const validatedData = result.data;
+}
+```
+
+## 性能优化
+
+### 数据库查询优化
+```typescript
+// 使用 select 只获取需要的字段
+const links = await prisma.link.findMany({
+  select: {
+    id: true,
+    url: true,
+    title: true,
+    createdAt: true,
+    // 不获取大字段如 description
+  },
+  where: { workspaceId },
+});
+
+// 使用 include 获取关联数据
+const linkWithTags = await prisma.link.findUnique({
+  where: { id: linkId },
+  include: {
+    tags: true,
+    user: {
+      select: { id: true, name: true, email: true }
+    },
+  },
+});
+```
+
+### 缓存策略
+```typescript
+// 使用 Redis 缓存频繁查询的数据
+import { redis } from "@/lib/upstash";
+
+export async function GET(request: NextRequest) {
+  const cacheKey = `workspace:${workspaceId}:links`;
+  
+  // 尝试从缓存获取
+  const cached = await redis.get(cacheKey);
+  if (cached) {
+    return Response.json(cached);
+  }
+
+  // 从数据库查询
+  const links = await prisma.link.findMany({
+    where: { workspaceId },
+  });
+
+  // 缓存结果（5分钟）
+  await redis.setex(cacheKey, 300, JSON.stringify(links));
+  
+  return Response.json(links);
+}
+```
+
+## 分页和过滤
+
+### 标准分页模式
+```typescript
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  
+  const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
+  const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "10")));
+  const search = searchParams.get("search") || "";
+
+  const where = {
+    workspaceId,
+    ...(search && {
+      OR: [
+        { title: { contains: search, mode: "insensitive" } },
+        { url: { contains: search, mode: "insensitive" } },
+      ],
+    }),
+  };
+
+  const [links, total] = await Promise.all([
+    prisma.link.findMany({
+      where,
+      skip: (page - 1) * limit,
+      take: limit,
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.link.count({ where }),
+  ]);
+
+  return Response.json({
+    data: links,
+    pagination: {
+      page,
+      limit,
+      total,
+      pages: Math.ceil(total / limit),
+    },
+  });
+}
+```
