@@ -1,0 +1,299 @@
+---
+globs: "*.ts,*.tsx"
+description: TypeScript 和 React 最佳实践指南
+---
+
+# TypeScript 和 React 最佳实践
+
+本规则适用于所有 TypeScript 和 React 文件，定义了类型安全和组件开发的最佳实践。
+
+## TypeScript 最佳实践
+
+### 类型定义
+
+#### 接口 vs 类型别名
+```typescript
+// 优先使用 interface 定义对象结构
+interface UserProps {
+  id: string;
+  name: string;
+  email?: string;
+}
+
+// 使用 type 定义联合类型、函数类型等
+type Status = "pending" | "completed" | "failed";
+type EventHandler = (event: MouseEvent) => void;
+```
+
+#### 泛型使用
+```typescript
+// 为可复用组件定义泛型
+interface TableProps<T> {
+  data: T[];
+  columns: Column<T>[];
+  onRowClick?: (row: T) => void;
+}
+
+// 约束泛型类型
+interface ApiResponse<T extends Record<string, any>> {
+  data: T;
+  success: boolean;
+}
+```
+
+### 类型导入和导出
+```typescript
+// 使用 type-only 导入
+import type { User } from "@dub/prisma/client";
+import type { ComponentProps } from "react";
+
+// 从 lib/types.ts 导入项目类型
+import type { WorkspaceProps, LinkProps } from "@/lib/types";
+```
+
+### 严格类型检查
+- 启用 `strictNullChecks`
+- 避免使用 `any`，使用 `unknown` 代替
+- 使用类型断言时要谨慎，优先使用类型守卫
+
+```typescript
+// 类型守卫示例
+function isUser(obj: unknown): obj is User {
+  return typeof obj === "object" && obj !== null && "id" in obj;
+}
+```
+
+## React 最佳实践
+
+### 组件定义
+
+#### 函数组件
+```typescript
+// 使用函数声明定义组件
+export function UserAvatar({ user, className }: UserAvatarProps) {
+  return <img src={user.avatar} className={className} />;
+}
+
+// 为复杂组件使用 React.memo
+export const ExpensiveComponent = React.memo(function ExpensiveComponent({
+  data,
+}: ExpensiveComponentProps) {
+  // 组件逻辑
+});
+```
+
+#### Props 类型定义
+```typescript
+// 明确定义 props 接口
+interface ButtonProps {
+  children: React.ReactNode;
+  variant?: "primary" | "secondary";
+  size?: "sm" | "md" | "lg";
+  disabled?: boolean;
+  onClick?: () => void;
+  className?: string;
+}
+
+// 使用 ComponentProps 继承原生元素属性
+interface InputProps extends ComponentProps<"input"> {
+  label?: string;
+  error?: string;
+}
+```
+
+### Hooks 使用
+
+#### useState
+```typescript
+// 明确指定状态类型
+const [user, setUser] = useState<User | null>(null);
+const [loading, setLoading] = useState(false);
+
+// 复杂状态使用 useReducer
+interface State {
+  data: User[];
+  loading: boolean;
+  error: string | null;
+}
+
+type Action = 
+  | { type: "FETCH_START" }
+  | { type: "FETCH_SUCCESS"; payload: User[] }
+  | { type: "FETCH_ERROR"; payload: string };
+```
+
+#### useEffect
+```typescript
+// 明确依赖数组
+useEffect(() => {
+  fetchUserData(userId);
+}, [userId]);
+
+// 清理副作用
+useEffect(() => {
+  const subscription = subscribe();
+  return () => subscription.unsubscribe();
+}, []);
+```
+
+#### 自定义 Hooks
+```typescript
+// 自定义 hook 返回类型
+function useApi<T>(url: string): {
+  data: T | null;
+  loading: boolean;
+  error: string | null;
+} {
+  // hook 实现
+}
+```
+
+### 事件处理
+
+#### 事件类型
+```typescript
+// 使用具体的事件类型
+const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
+  event.preventDefault();
+  // 处理逻辑
+};
+
+const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
+  setValue(event.target.value);
+};
+```
+
+#### 表单处理
+```typescript
+// 使用 react-hook-form 进行表单管理
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+
+interface FormData {
+  name: string;
+  email: string;
+}
+
+const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
+  resolver: zodResolver(formSchema),
+});
+```
+
+### 条件渲染
+
+#### 安全的条件渲染
+```typescript
+// 避免 0 或空字符串导致的渲染问题
+{items.length > 0 && <ItemList items={items} />}
+{user?.name && <UserName name={user.name} />}
+
+// 使用三元运算符处理 fallback
+{loading ? <Spinner /> : <Content data={data} />}
+```
+
+### 性能优化
+
+#### useMemo 和 useCallback
+```typescript
+// 缓存昂贵的计算
+const expensiveValue = useMemo(() => {
+  return heavyComputation(data);
+}, [data]);
+
+// 缓存事件处理函数
+const handleClick = useCallback(() => {
+  onItemClick(item.id);
+}, [item.id, onItemClick]);
+```
+
+#### 组件拆分
+```typescript
+// 将大组件拆分为小组件
+function UserProfile({ user }: { user: User }) {
+  return (
+    <div>
+      <UserAvatar user={user} />
+      <UserInfo user={user} />
+      <UserActions user={user} />
+    </div>
+  );
+}
+```
+
+## 错误边界
+
+```typescript
+// 使用错误边界处理组件错误
+class ErrorBoundary extends Component<
+  { children: ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(): { hasError: boolean } {
+    return { hasError: true };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <ErrorFallback />;
+    }
+    return this.props.children;
+  }
+}
+```
+
+## Zod 集成
+
+```typescript
+// 使用 Zod 进行运行时类型验证
+import { z } from "zod";
+
+const userSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  email: z.string().email().optional(),
+});
+
+type User = z.infer<typeof userSchema>;
+
+// 在 API 路由中验证数据
+const result = userSchema.safeParse(requestData);
+if (!result.success) {
+  return new Response("Invalid data", { status: 400 });
+}
+```
+
+## 样式和 CSS
+
+### Tailwind CSS 类名
+```typescript
+// 使用 cn 工具函数合并类名
+import { cn } from "@dub/utils";
+
+function Button({ className, variant = "primary" }: ButtonProps) {
+  return (
+    <button
+      className={cn(
+        "px-4 py-2 rounded-md font-medium",
+        variant === "primary" && "bg-blue-600 text-white",
+        variant === "secondary" && "bg-gray-200 text-gray-900",
+        className,
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+```
+
+### 响应式设计
+```typescript
+// 使用 Tailwind 响应式前缀
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+  {items.map(item => <ItemCard key={item.id} item={item} />)}
+</div>
+```

@@ -1,0 +1,431 @@
+---
+globs: "packages/prisma/**/*.prisma,**/*prisma*,lib/planetscale/**/*.ts"
+description: 数据库和 Prisma ORM 最佳实践
+---
+
+# 数据库和 Prisma 最佳实践
+
+本规则定义了 Dub 项目中数据库设计和 Prisma ORM 使用的最佳实践。
+
+## Prisma Schema 组织
+
+### Schema 文件结构
+Prisma schema 按功能模块拆分在 [packages/prisma/schema/](mdc:packages/prisma/schema/) 目录：
+
+```
+schema/
+├── schema.prisma      # 主配置文件
+├── user.prisma        # 用户相关模型
+├── project.prisma     # 项目/工作区模型
+├── link.prisma        # 链接模型
+├── analytics.prisma   # 分析数据模型
+├── partner.prisma     # 合作伙伴模型
+└── campaign.prisma    # 营销活动模型
+```
+
+### 模型定义约定
+```prisma
+// 标准模型结构
+model User {
+  // 1. 主键
+  id        String   @id @default(cuid())
+  
+  // 2. 基本字段
+  name      String?
+  email     String   @unique
+  image     String?
+  
+  // 3. 状态字段
+  emailVerified DateTime?
+  isMachine     Boolean   @default(false)
+  
+  // 4. 时间戳
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // 5. 关系字段
+  projects ProjectUsers[]
+  links    Link[]
+  
+  // 6. 索引
+  @@map("users")
+}
+```
+
+### 字段命名约定
+- **主键**: 使用 `id` 作为主键名
+- **外键**: 使用 `modelId` 格式 (如 `userId`, `projectId`)
+- **布尔值**: 使用 `is/has/can` 前缀 (如 `isActive`, `hasPassword`)
+- **时间戳**: 使用 `createdAt`, `updatedAt`, `deletedAt`
+- **枚举**: 使用 PascalCase (如 `UserRole`, `LinkStatus`)
+
+## 数据库客户端使用
+
+### 客户端初始化
+```typescript
+// packages/prisma/client.ts
+import { PrismaClient } from "@prisma/client";
+
+declare global {
+  var prisma: PrismaClient | undefined;
+}
+
+export const prisma = globalThis.prisma || new PrismaClient();
+
+if (process.env.NODE_ENV !== "production") {
+  globalThis.prisma = prisma;
+}
+```
+
+### Edge Runtime 客户端
+```typescript
+// packages/prisma/edge.ts
+import { PrismaClient } from "@prisma/client/edge";
+import { withAccelerate } from "@prisma/extension-accelerate";
+
+export const prisma = new PrismaClient().$extends(withAccelerate());
+```
+
+## 查询模式和最佳实践
+
+### 基本 CRUD 操作
+```typescript
+// 创建记录
+const user = await prisma.user.create({
+  data: {
+    name: "John Doe",
+    email: "john@example.com",
+  },
+});
+
+// 查询单条记录
+const user = await prisma.user.findUnique({
+  where: { id: userId },
+  select: {
+    id: true,
+    name: true,
+    email: true,
+    // 只选择需要的字段
+  },
+});
+
+// 查询多条记录
+const users = await prisma.user.findMany({
+  where: {
+    projects: {
+      some: {
+        projectId: workspaceId,
+      },
+    },
+  },
+  orderBy: { createdAt: "desc" },
+  take: 10,
+});
+
+// 更新记录
+const updatedUser = await prisma.user.update({
+  where: { id: userId },
+  data: { name: "Jane Doe" },
+});
+
+// 删除记录
+await prisma.user.delete({
+  where: { id: userId },
+});
+```
+
+### 关系查询
+```typescript
+// 包含关联数据
+const userWithProjects = await prisma.user.findUnique({
+  where: { id: userId },
+  include: {
+    projects: {
+      include: {
+        project: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+          },
+        },
+      },
+    },
+  },
+});
+
+// 嵌套过滤
+const activeUsers = await prisma.user.findMany({
+  where: {
+    projects: {
+      some: {
+        project: {
+          plan: "pro",
+        },
+      },
+    },
+  },
+});
+```
+
+### 聚合查询
+```typescript
+// 计数查询
+const linkCount = await prisma.link.count({
+  where: {
+    projectId: workspaceId,
+    createdAt: {
+      gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // 30天内
+    },
+  },
+});
+
+// 分组聚合
+const linksByDomain = await prisma.link.groupBy({
+  by: ["domain"],
+  where: { projectId: workspaceId },
+  _count: {
+    id: true,
+  },
+  orderBy: {
+    _count: {
+      id: "desc",
+    },
+  },
+});
+```
+
+### 事务处理
+```typescript
+// 简单事务
+const result = await prisma.$transaction([
+  prisma.user.create({ data: userData }),
+  prisma.project.create({ data: projectData }),
+]);
+
+// 交互式事务
+const result = await prisma.$transaction(async (tx) => {
+  const user = await tx.user.create({ data: userData });
+  
+  const project = await tx.project.create({
+    data: {
+      ...projectData,
+      users: {
+        create: {
+          userId: user.id,
+          role: "OWNER",
+        },
+      },
+    },
+  });
+  
+  return { user, project };
+});
+```
+
+## 性能优化
+
+### 查询优化
+```typescript
+// 使用 select 减少数据传输
+const users = await prisma.user.findMany({
+  select: {
+    id: true,
+    name: true,
+    email: true,
+    // 不获取不需要的字段如 image, createdAt 等
+  },
+});
+
+// 使用 cursor-based 分页处理大数据集
+const links = await prisma.link.findMany({
+  take: 10,
+  cursor: lastId ? { id: lastId } : undefined,
+  skip: lastId ? 1 : 0,
+  orderBy: { createdAt: "desc" },
+});
+```
+
+### 索引优化
+```prisma
+model Link {
+  id        String   @id @default(cuid())
+  domain    String
+  key       String
+  url       String
+  projectId String
+  createdAt DateTime @default(now())
+  
+  // 复合索引用于常见查询
+  @@index([projectId, createdAt])
+  @@index([domain, key])
+  @@unique([domain, key])
+}
+```
+
+### 连接池配置
+```typescript
+// 在生产环境中配置连接池
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: process.env.DATABASE_URL,
+    },
+  },
+  log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
+});
+```
+
+## 数据迁移
+
+### Schema 变更流程
+1. 修改 `.prisma` 文件
+2. 生成迁移文件：`pnpm prisma migrate dev`
+3. 应用到生产：`pnpm prisma migrate deploy`
+
+### 安全迁移实践
+```prisma
+// 添加可选字段
+model User {
+  id       String  @id @default(cuid())
+  name     String?
+  email    String  @unique
+  newField String? // 先添加为可选字段
+}
+
+// 后续迁移中设为必填
+model User {
+  id       String @id @default(cuid())
+  name     String?
+  email    String @unique
+  newField String @default("defaultValue") // 设置默认值后改为必填
+}
+```
+
+### 数据种子
+```typescript
+// prisma/seed.ts
+import { PrismaClient } from "@prisma/client";
+
+const prisma = new PrismaClient();
+
+async function main() {
+  // 创建测试数据
+  const user = await prisma.user.upsert({
+    where: { email: "admin@dub.co" },
+    update: {},
+    create: {
+      email: "admin@dub.co",
+      name: "Admin User",
+    },
+  });
+  
+  console.log({ user });
+}
+
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
+```
+
+## 类型安全
+
+### 生成的类型使用
+```typescript
+import type { User, Link, Prisma } from "@dub/prisma/client";
+
+// 使用生成的类型
+function processUser(user: User) {
+  // TypeScript 会提供完整的类型检查
+}
+
+// 使用 Prisma 输入类型
+type CreateUserInput = Prisma.UserCreateInput;
+type UpdateUserInput = Prisma.UserUpdateInput;
+
+// 使用查询结果类型
+type UserWithProjects = Prisma.UserGetPayload<{
+  include: { projects: true };
+}>;
+```
+
+### 自定义类型扩展
+```typescript
+// 扩展 Prisma 类型
+export interface UserWithRole extends User {
+  role: "OWNER" | "MEMBER";
+}
+
+// 创建选择器类型
+export type UserPublic = Pick<User, "id" | "name" | "image">;
+```
+
+## 错误处理
+
+### Prisma 错误处理
+```typescript
+import { Prisma } from "@prisma/client";
+
+try {
+  const user = await prisma.user.create({ data: userData });
+} catch (error) {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    // 处理已知错误
+    if (error.code === "P2002") {
+      // 唯一约束违反
+      throw new Error("Email already exists");
+    }
+  }
+  
+  // 处理其他错误
+  console.error("Database error:", error);
+  throw new Error("Database operation failed");
+}
+```
+
+### 常见错误码
+- `P2002`: 唯一约束违反
+- `P2025`: 记录不存在
+- `P2003`: 外键约束违反
+- `P2016`: 查询解释错误
+
+## 开发工具
+
+### 有用的 Prisma 命令
+```bash
+# 生成客户端
+pnpm prisma generate
+
+# 推送 schema 到数据库（开发环境）
+pnpm prisma db push
+
+# 创建迁移
+pnpm prisma migrate dev --name add-user-role
+
+# 重置数据库
+pnpm prisma migrate reset
+
+# 查看数据库
+pnpm prisma studio
+
+# 格式化 schema
+pnpm prisma format
+```
+
+### 调试查询
+```typescript
+// 启用查询日志
+const prisma = new PrismaClient({
+  log: ["query", "info", "warn", "error"],
+});
+
+// 使用 $queryRaw 执行原生 SQL
+const result = await prisma.$queryRaw`
+  SELECT * FROM users WHERE email = ${email}
+`;
+```
