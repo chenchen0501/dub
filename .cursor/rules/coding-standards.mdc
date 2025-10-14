@@ -1,0 +1,173 @@
+---
+alwaysApply: true
+description: Dub 代码规范和风格指南
+---
+
+# Dub 代码规范和风格指南
+
+本规则定义了 Dub 项目的代码风格和最佳实践。
+
+## 代码格式化
+
+### Prettier 配置
+项目使用 [prettier.config.js](mdc:prettier.config.js) 进行代码格式化：
+- **缩进**: 2 个空格
+- **行宽**: 80 字符
+- **分号**: 必须使用
+- **尾随逗号**: 所有地方都使用
+- **括号间距**: 保持空格
+
+### 自动格式化
+- 使用 `pnpm format` 格式化所有文件
+- 提交前自动运行 prettier 检查
+
+## 命名约定
+
+### 文件命名
+- **组件文件**: kebab-case (例如: `user-avatar.tsx`)
+- **工具函数**: kebab-case (例如: `format-date.ts`)
+- **类型文件**: kebab-case (例如: `api-types.ts`)
+- **常量文件**: kebab-case (例如: `app-constants.ts`)
+
+### 变量和函数命名
+- **变量**: camelCase (例如: `userName`, `isLoading`)
+- **函数**: camelCase (例如: `getUserData`, `handleClick`)
+- **常量**: SCREAMING_SNAKE_CASE (例如: `API_BASE_URL`, `MAX_RETRY_COUNT`)
+- **类型/接口**: PascalCase (例如: `UserProps`, `ApiResponse`)
+
+### 组件命名
+- **React 组件**: PascalCase (例如: `UserAvatar`, `LinkBuilder`)
+- **组件文件**: 导出的主组件名与文件名对应
+
+## 导入/导出约定
+
+### 导入顺序 (由 prettier-plugin-organize-imports 自动处理)
+1. React 相关导入
+2. 第三方库导入
+3. 内部包导入 (`@dub/*`)
+4. 相对路径导入
+
+### 导出约定
+```typescript
+// 优先使用命名导出
+export function UserAvatar() { ... }
+export { UserAvatar as Avatar };
+
+// 避免默认导出，除非是页面组件
+export default function HomePage() { ... }
+```
+
+## 代码组织
+
+### 组件结构
+```typescript
+// 1. 导入
+import { useState } from "react";
+import { cn } from "@dub/utils";
+
+// 2. 类型定义
+interface ComponentProps {
+  className?: string;
+}
+
+// 3. 组件实现
+export function Component({ className }: ComponentProps) {
+  // 4. Hooks
+  const [state, setState] = useState();
+  
+  // 5. 事件处理函数
+  const handleClick = () => {
+    // ...
+  };
+  
+  // 6. 渲染逻辑
+  return (
+    <div className={cn("base-styles", className)}>
+      {/* JSX */}
+    </div>
+  );
+}
+```
+
+### API 路由结构
+```typescript
+// app/api/example/route.ts
+import { NextRequest } from "next/server";
+import { z } from "zod";
+
+// 1. Schema 定义
+const requestSchema = z.object({
+  // ...
+});
+
+// 2. 路由处理函数
+export async function GET(request: NextRequest) {
+  // 验证、处理、返回
+}
+```
+
+## 错误处理
+
+### 客户端错误处理
+```typescript
+// 使用 try-catch 包装异步操作
+try {
+  const result = await apiCall();
+  return result;
+} catch (error) {
+  console.error("API call failed:", error);
+  throw new Error("操作失败");
+}
+```
+
+### API 错误响应
+```typescript
+// 统一的错误响应格式
+return new Response(
+  JSON.stringify({ error: "错误信息" }),
+  { status: 400, headers: { "Content-Type": "application/json" } }
+);
+```
+
+## 注释约定
+
+### 函数注释
+```typescript
+/**
+ * 获取用户头像 URL
+ * @param user - 用户对象
+ * @returns 头像 URL 字符串
+ */
+export function getUserAvatarUrl(user?: User | null): string {
+  // 实现逻辑
+}
+```
+
+### 复杂逻辑注释
+```typescript
+// 使用 Gravatar 作为备用头像，如果用户有邮箱的话
+return user.email
+  ? `https://0.gravatar.com/avatar/${sha256(user.email)}?d=${ogAvatar}`
+  : ogAvatar;
+```
+
+## 性能约定
+
+### 组件优化
+- 使用 `React.memo` 包装纯组件
+- 使用 `useMemo` 和 `useCallback` 优化昂贵计算
+- 避免在渲染函数中创建对象和函数
+
+### 导入优化
+- 使用具体导入而非整体导入
+- 动态导入大型组件和库
+
+## 安全约定
+
+### 输入验证
+- 所有 API 输入必须使用 Zod schema 验证
+- 客户端输入也要进行基本验证
+
+### 敏感信息
+- 永远不要在客户端代码中硬编码 API 密钥
+- 使用环境变量管理配置

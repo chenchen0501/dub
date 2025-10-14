@@ -1,0 +1,131 @@
+---
+alwaysApply: false
+description: Cursor 规则使用指南和规则索引
+---
+
+# Dub 项目 Cursor 规则指南
+
+本文档提供了 Dub 项目中所有 Cursor 规则的概览和使用指南。
+
+## 规则文件概览
+
+### 🏗️ [project-structure.mdc](mdc:.cursor/rules/project-structure.mdc)
+**自动应用**: ✅ 总是应用  
+**描述**: Dub 项目结构和架构指南  
+**内容**: 
+- Monorepo 架构概览
+- 目录结构约定
+- 技术栈说明
+- 开发工作流
+
+### 📝 [coding-standards.mdc](mdc:.cursor/rules/coding-standards.mdc)
+**自动应用**: ✅ 总是应用  
+**描述**: 代码规范和风格指南  
+**内容**:
+- Prettier 配置和格式化规则
+- 命名约定（文件、变量、函数、组件）
+- 导入/导出约定
+- 代码组织结构
+- 错误处理模式
+
+### ⚛️ [typescript-react.mdc](mdc:.cursor/rules/typescript-react.mdc)
+**自动应用**: 🎯 仅 TypeScript/React 文件  
+**适用文件**: `*.ts`, `*.tsx`  
+**描述**: TypeScript 和 React 最佳实践  
+**内容**:
+- TypeScript 类型定义最佳实践
+- React 组件开发模式
+- Hooks 使用规范
+- 性能优化技巧
+- Zod 集成和验证
+
+### 📦 [monorepo-packages.mdc](mdc:.cursor/rules/monorepo-packages.mdc)
+**自动应用**: ✅ 总是应用  
+**描述**: Monorepo 和包管理指南  
+**内容**:
+- Turborepo 配置和使用
+- 包依赖管理策略
+- 核心包说明 (@dub/ui, @dub/utils, @dub/prisma 等)
+- 开发工作流和命令
+- 包开发最佳实践
+
+### 🌐 [api-patterns.mdc](mdc:.cursor/rules/api-patterns.mdc)
+**自动应用**: 🎯 仅 API 相关文件  
+**适用文件**: `app/api/**/*.ts`, `lib/api/**/*.ts`, `lib/swr/**/*.ts`  
+**描述**: API 路由和数据获取模式  
+**内容**:
+- Next.js App Router API 设计
+- 标准路由实现模式
+- SWR hooks 和数据获取
+- 认证和授权处理
+- 错误处理和验证
+- 性能优化策略
+
+### 🗄️ [database-prisma.mdc](mdc:.cursor/rules/database-prisma.mdc)
+**自动应用**: 🎯 仅数据库相关文件  
+**适用文件**: `packages/prisma/**/*.prisma`, `**/*prisma*`, `lib/planetscale/**/*.ts`  
+**描述**: 数据库和 Prisma ORM 最佳实践  
+**内容**:
+- Prisma Schema 组织和约定
+- 数据库客户端使用模式
+- 查询优化和性能调优
+- 事务处理
+- 数据迁移策略
+- 类型安全和错误处理
+
+## 如何使用这些规则
+
+### 自动应用的规则
+标记为"总是应用"的规则会在每次 AI 交互时自动加载，无需手动引用。
+
+### 条件应用的规则
+标记为"仅特定文件"的规则只在编辑相应文件类型时自动应用。
+
+### 手动引用规则
+你可以在对话中明确提及规则名称来获取特定指导：
+- "请按照 TypeScript React 规则重构这个组件"
+- "根据 API 模式规则实现这个端点"
+- "遵循数据库规则优化这个查询"
+
+## 规则维护
+
+### 更新规则
+当项目架构或最佳实践发生变化时，请更新相应的规则文件：
+
+1. 编辑 `.cursor/rules/` 目录下的相应 `.mdc` 文件
+2. 确保 frontmatter 元数据正确
+3. 使用 `[filename.ext](mdc:filename.ext)` 格式引用项目文件
+4. 提供清晰的示例和说明
+
+### 添加新规则
+创建新规则时：
+
+1. 在 `.cursor/rules/` 目录下创建新的 `.mdc` 文件
+2. 设置适当的 frontmatter：
+   - `alwaysApply: true` - 总是应用
+   - `globs: "*.ext"` - 特定文件类型应用
+   - `description: "..."` - 规则描述
+3. 更新本 README 文件的规则索引
+
+## 最佳实践提醒
+
+### 开发流程
+1. **本地开发**: `pnpm dev`
+2. **代码格式化**: `pnpm format`
+3. **类型检查**: `pnpm build`
+4. **测试**: `pnpm test`
+
+### 关键约定
+- 使用 `@/` 前缀引用 apps/web 内的文件
+- 使用 `@dub/package-name` 引用 monorepo 包
+- 优先使用命名导出而非默认导出
+- 所有 API 输入必须使用 Zod schema 验证
+- 组件文件使用 kebab-case 命名
+
+### 性能考虑
+- 使用 `React.memo` 包装纯组件
+- 合理使用 `useMemo` 和 `useCallback`
+- 数据库查询使用 `select` 限制字段
+- API 响应实现分页和缓存
+
+这些规则旨在确保代码质量、一致性和可维护性。请在开发过程中积极参考和遵循这些指导原则。

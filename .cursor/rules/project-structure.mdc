@@ -1,0 +1,83 @@
+---
+alwaysApply: true
+description: Dub 项目结构和架构指南
+---
+
+# Dub 项目结构和架构指南
+
+Dub 是一个现代化的开源链接归因平台，采用 Turborepo monorepo 架构。
+
+## 项目架构概览
+
+### 核心应用
+- **apps/web/** - 主要的 Next.js 应用，包含所有前端和 API 路由
+  - `app/` - Next.js 13+ App Router 结构
+  - `ui/` - 应用特定的 UI 组件
+  - `lib/` - 业务逻辑、工具函数和配置
+  - `scripts/` - 构建和维护脚本
+
+### 共享包 (packages/)
+- **@dub/ui** - 共享 UI 组件库
+- **@dub/utils** - 通用工具函数
+- **@dub/prisma** - 数据库 schema 和客户端
+- **@dub/email** - 邮件模板和发送逻辑
+- **@dub/tailwind-config** - 共享 Tailwind CSS 配置
+
+### 技术栈
+- **框架**: Next.js 15 with App Router
+- **语言**: TypeScript
+- **样式**: Tailwind CSS
+- **数据库**: Prisma ORM + PlanetScale
+- **认证**: NextAuth.js
+- **缓存**: Upstash Redis
+- **分析**: Tinybird
+- **构建**: Turborepo
+- **部署**: Vercel
+
+## 目录结构约定
+
+### API 路由 (apps/web/app/api/)
+```
+api/
+├── auth/           # 认证相关 API
+├── links/          # 链接管理 API
+├── analytics/      # 分析数据 API
+├── partners/       # 合作伙伴 API
+└── webhooks/       # Webhook 处理
+```
+
+### UI 组件 (apps/web/ui/)
+```
+ui/
+├── layout/         # 布局组件
+├── shared/         # 通用组件
+├── modals/         # 模态框组件
+├── analytics/      # 分析相关组件
+└── links/          # 链接相关组件
+```
+
+### 业务逻辑 (apps/web/lib/)
+```
+lib/
+├── actions/        # Server Actions
+├── api/           # API 客户端函数
+├── auth/          # 认证逻辑
+├── middleware/    # 中间件
+├── zod/           # Zod schema 定义
+└── swr/           # SWR hooks
+```
+
+## 重要约定
+
+1. **路径别名**: 使用 `@/` 前缀引用 apps/web 内的文件
+2. **包引用**: 使用 `@dub/package-name` 引用 monorepo 包
+3. **组件导出**: 优先使用命名导出而非默认导出
+4. **类型定义**: 集中在 [lib/types.ts](mdc:apps/web/lib/types.ts) 中
+5. **API 路由**: 遵循 RESTful 约定，使用适当的 HTTP 方法
+
+## 开发工作流
+
+1. **本地开发**: `pnpm dev` - 启动开发服务器
+2. **构建**: `pnpm build` - 构建所有包和应用
+3. **测试**: `pnpm test` - 运行测试套件
+4. **数据库**: `pnpm prisma:push` - 同步数据库 schema
