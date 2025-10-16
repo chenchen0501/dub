@@ -37,6 +37,11 @@ export default async function middleware(req: NextRequest, ev: NextFetchEvent) {
 
   AxiomMiddleware(req, ev);
 
+  // Allow public access to /compress route (for development/demo)
+  if (path === "/compress") {
+    return NextResponse.next();
+  }
+
   // for App
   if (APP_HOSTNAMES.has(domain)) {
     return AppMiddleware(req);
