@@ -6,6 +6,8 @@ import imageCompression from "browser-image-compression";
 import { Upload } from "lucide-react";
 import { useCallback, useState } from "react";
 
+export type CompressionMode = "high-quality" | "balanced" | "minimum-size";
+
 interface UploaderProps {
   onCompressionComplete: (result: CompressionResult) => void;
   className?: string;
@@ -18,16 +20,42 @@ export interface CompressionResult {
   compressedSize: number;
   compressionRatio: number;
   duration: number;
+  mode: CompressionMode;
 }
+
+const COMPRESSION_MODES = [
+  {
+    id: "high-quality" as CompressionMode,
+    name: "高品质",
+    description: "保持高画质,适度压缩",
+    quality: 0.92,
+    maxSize: 10,
+  },
+  {
+    id: "balanced" as CompressionMode,
+    name: "平衡",
+    description: "画质与体积平衡",
+    quality: 0.8,
+    maxSize: 5,
+  },
+  {
+    id: "minimum-size" as CompressionMode,
+    name: "最小体积",
+    description: "最大压缩率",
+    quality: 0.6,
+    maxSize: 1,
+  },
+];
 
 export function Uploader({ onCompressionComplete, className }: UploaderProps) {
   const [isCompressing, setIsCompressing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedMode, setSelectedMode] = useState<CompressionMode>("balanced");
 
   const compressImage = useCallback(
-    async (file: File) => {
+    async (file: File, mode: CompressionMode) => {
       setIsCompressing(true);
       setProgress(0);
       setError(null);
@@ -35,10 +63,12 @@ export function Uploader({ onCompressionComplete, className }: UploaderProps) {
       const startTime = Date.now();
 
       try {
-        // 固定参数：quality=0.8, maxWidth=1920
+        const modeConfig = COMPRESSION_MODES.find((m) => m.id === mode)!;
+
         const options = {
+          maxSizeMB: modeConfig.maxSize,
           maxWidthOrHeight: 1920,
-          initialQuality: 0.8,
+          initialQuality: modeConfig.quality,
           useWebWorker: true,
           onProgress: (p: number) => {
             setProgress(p);
@@ -56,6 +86,7 @@ export function Uploader({ onCompressionComplete, className }: UploaderProps) {
           compressionRatio:
             ((file.size - compressedFile.size) / file.size) * 100,
           duration,
+          mode,
         };
 
         onCompressionComplete(result);
@@ -88,9 +119,9 @@ export function Uploader({ onCompressionComplete, className }: UploaderProps) {
         return;
       }
 
-      compressImage(file);
+      compressImage(file, selectedMode);
     },
-    [compressImage],
+    [compressImage, selectedMode],
   );
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -114,6 +145,36 @@ export function Uploader({ onCompressionComplete, className }: UploaderProps) {
 
   return (
     <div className={cn("w-full", className)}>
+      {/* 压缩模式选择 */}
+      <div className="mb-6">
+        <label className="mb-3 block text-sm font-medium text-gray-700">
+          压缩模式
+        </label>
+        <div className="grid grid-cols-3 gap-3">
+          {COMPRESSION_MODES.map((mode) => (
+            <button
+              key={mode.id}
+              type="button"
+              onClick={() => setSelectedMode(mode.id)}
+              disabled={isCompressing}
+              className={cn(
+                "rounded-lg border-2 p-4 text-left transition-all",
+                selectedMode === mode.id
+                  ? "border-blue-500 bg-blue-50"
+                  : "border-gray-200 bg-white hover:border-gray-300",
+                isCompressing && "cursor-not-allowed opacity-50",
+              )}
+            >
+              <div className="font-semibold text-gray-900">{mode.name}</div>
+              <div className="mt-1 text-xs text-gray-500">
+                {mode.description}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 上传区域 */}
       <div
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -135,11 +196,11 @@ export function Uploader({ onCompressionComplete, className }: UploaderProps) {
           <p className="mt-1 text-sm text-gray-500">
             {isCompressing
               ? `进度: ${progress}%`
-              : "拖拽图片到此处，或点击选择文件"}
+              : "拖拽图片到此处,或点击选择文件"}
           </p>
           {!isCompressing && (
             <p className="mt-1 text-xs text-gray-400">
-              支持 JPG、PNG、WebP，最大 20MB
+              支持 JPG、PNG、WebP,最大 20MB
             </p>
           )}
         </div>
