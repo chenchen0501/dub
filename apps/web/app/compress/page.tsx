@@ -5,7 +5,6 @@ import {
   Uploader,
   type CompressionResult,
 } from "@/components/compress/uploader";
-import { Wordmark } from "@dub/ui";
 import { useState } from "react";
 
 export default function CompressPage() {
@@ -16,7 +15,14 @@ export default function CompressPage() {
       {/* Header */}
       <div className="border-b border-gray-200 bg-white py-4">
         <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
-          <Wordmark className="h-8" />
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 text-lg font-bold text-white">
+              S
+            </div>
+            <span className="text-xl font-bold text-gray-900">
+              Smart Compress
+            </span>
+          </div>
         </div>
       </div>
 
@@ -75,9 +81,9 @@ export default function CompressPage() {
       <footer className="border-t border-gray-200 bg-white py-6">
         <div className="mx-auto max-w-5xl px-4 text-center text-sm text-gray-500 sm:px-6 lg:px-8">
           <p>
-            基于{" "}
+            <span className="font-semibold">Smart Compress</span> · 基于{" "}
             <span className="font-semibold">browser-image-compression</span>{" "}
-            构建 · Day 1 MVP
+            构建
           </p>
         </div>
       </footer>
